@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F S C</title>
+</head>
+<style>
+  #canvas {
+    border: 1px solid #000;
+    cursor: pointer;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  .box {
+    display: flex;
+  }
+  .control-item {
+    margin-bottom: 10px;
+    margin-right: 30px;
+  }
+  .control-item button {
+
+  }
+  .active {
+    color: red;
+    border: 1px solid red;
+  }
+</style>
+
+<body>
+  <div class="main">
+    <!-- 画布 -->
+    <canvas id="canvas" width="496" height="496"></canvas>
+
+    <div class="box">
+      <div id="tip" class="control-item"></div>
+
+      <div class="control-item">
+        <span>游戏类型：</span>
+        <input type="button" id="type1" class="active" onclick="changeGameType(1)" value="单人" />
+        <input type="button" id="type2" onclick="changeGameType(2)" value="人机" />      
+      </div>
+      <div class="control-item">
+        <input type="button" onclick="reset()" value="重置" />      
+      </div>
+    </div>
+
+  </div>
+</body>
+
+<script>
+  // 画布长宽相同，宽减去两侧边距与间隔成倍数，否则有小数精度问题
+  var padding = 20; // 棋盘边距
+  var lineHeight = 24  // 棋盘间隔
+  var maxBorder = 496 - padding
+
+  var gameType = 1 // 1:单人 2：人机
+  var chessPiece = true // true:黑 false:白
+  var isFinal = false
+  var chessPieceList = []
+  var blackLong = []
+  var whiteLong = []
+
+  var ctxA = null
+
+  // 网页加载完毕后立刻执行的操作
+  window.onload = function () {
+    document.getElementById("tip").innerHTML = "当前落子：" + (chessPiece ? "黑" : "白") + (gameType === 2 ? (chessPiece ? "（你）" : "（电脑）") : '')
+    var canvas = document.getElementById('canvas');
+    var ctx = canvas.getContext('2d');
+    ctxA = ctx
+
+    draw(ctx)
+
+    // 落子
+    canvas.onmousedown = function(e) {
+      if (chessPiece || gameType === 1) {
+        var first = getBoundingClientRect(e.clientX, e.clientY);
+        var cx = ((first.x - padding) / lineHeight).toFixed() * lineHeight + padding;
+        var cy = ((first.y - padding) / lineHeight).toFixed() * lineHeight + padding;
+        if (cx < padding || cx > maxBorder || cy < padding || cy > maxBorder) return
+
+        var obj = {'name': cx + ',' + cy, type: chessPiece}
+
+        if(!chessPieceList.map(x => x.name).includes(obj.name)) {
+          console.log("落子：", cx + ',' + cy)
+          dot(ctx, chessPiece ? "#000" : "#fff", cx, cy, 8)
+          chessPieceList.push(obj)
+          // if(chessPieceList.length >= 9) {
+          inventory(obj, chessPiece, ctx)
+          // }
+          console.log("end")
+          chessFinal()
+
+          if (!isFinal && gameType === 2) {
+            setTimeout(() => {
+              computerDown(ctx) // 电脑计算
+            }, 1500) 
+          }
+        }
+      }
+    }
+  }
+
+  function chessFinal() {
+    chessPiece = !chessPiece
+    document.getElementById("tip").innerHTML = "当前落子：" + (chessPiece ? "黑" : "白") + (gameType === 2 ? (chessPiece ? "（你）" : "（电脑）") : '')
+  }
+
+  // 画图
+  function draw(ctx) {
+    ctx.fillStyle="#e7e8eb";
+    ctx.fillRect(0,0,496,496);
+    ctx.lineJoin="round";
+    ctx.lineWidth="1"
+    ctx.strokeStyle="#000"
+
+    // 棋盘
+    for(let i = 0; i < 2; i++) {
+      for(let x = 0; x < padding; x++) {
+        let loc = lineHeight * x
+        if (i === 0) {
+          ctx.beginPath();
+          ctx.moveTo(padding, loc + padding);
+          ctx.lineTo((496 - padding), loc + padding)
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(loc + padding, padding);
+          ctx.lineTo(loc + padding, (496 - padding))
+          ctx.stroke();
+        }
+      }
+    }
+
+    // 星位
+    var left = padding + 4 * lineHeight;
+    var middle = padding + ((18 - 8) / 2 + 4) * lineHeight;
+    var right = 496 - padding - 4 * lineHeight;
+    // 左
+    dot(ctx, "#000", (left), (left), 4)
+    dot(ctx, "#000", (left), (middle), 4)
+    dot(ctx, "#000", (left), (right), 4)
+    // 中
+    dot(ctx, "#000", (middle), (left), 4)
+    dot(ctx, "#000", (middle), (middle), 4)
+    dot(ctx, "#000", (middle), (right), 4)
+    // 右
+    dot(ctx, "#000", (right), (left), 4)
+    dot(ctx, "#000", (right), (middle), 4)
+    dot(ctx, "#000", (right), (right), 4)
+  }
+
+  // 绘点
+  function dot(ctx, color, x, y, r) {
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.arc(x, y, r, 0, 2 * Math.PI)
+    ctx.closePath()
+    ctx.fill()
+  }
+  
+  //获取canvas的距离浏览器视窗的上下左右距离
+  function getBoundingClientRect(x, y) {
+    var box = canvas.getBoundingClientRect();
+    return {
+      x: x - box.left,
+      y: y - box.top
+    }
+  }
+
+  // 盘点
+  function inventory(obj, type, ctx) {
+    console.log(222, type)
+    var dangerList = [] // 记录可能连线列表
+    var data = chessPieceList.filter(x => x.type === type)
+    var nameList = data.map(x => x.name)
+    var d = lineHeight.toFixed()
+
+    let list = obj.name.split(',')
+    let x = Number(list[0])
+    let y = Number(list[1])
+    let step = lineHeight * 2
+
+    // 判断范围
+    var left = (x - step) >= padding ? x - step : x
+    var right = (x + step) <= maxBorder ? x + step : x
+    var top = (y - step) >= padding ? y - step : y
+    var bottom = (y + step) <= maxBorder ? y + step : y
+
+    let chessList = nameList.filter(x => {
+      let d = x.split(',')
+      return Number(d[0]) >= Number(left) && Number(d[0]) <= Number(right) && Number(d[1]) >= Number(top) && Number(d[1]) <= Number(bottom)
+    })
+
+    for(let i = 0; i < chessList.length; i++) {
+      let l = find(chessList[i], type, nameList, ctx)
+      // let l = find(obj.name, type, nameList, ctx)
+      dangerList = dangerList.concat(l)
+      if (isFinal) break
+    }
+    if (type) {
+      blackLong = dangerList
+    } else {
+      whiteLong = dangerList
+    }
+  }
+
+  // 获取范围
+  // 最新落子位置上下左右延展两子范围，以范围内棋子依次为五子中点，判断是否有五子相连
+  function find(name, type, data, ctx) {
+    let dangerList = [] // 记录可能连线列表
+    let list = name.split(',')
+    let x = Number(list[0])
+    let y = Number(list[1])
+    let step = lineHeight * 2
+    let res = 0
+
+    // 中心点范围
+    var left = (x - step) >= padding ? x - step : x
+    var right = (x + step) <= maxBorder ? x + step : x
+    var top = (y - step) >= padding ? y - step : y
+    var bottom = (y + step) <= maxBorder ? y + step : y
+
+    let list1 = data.filter(x => {
+      let d = x.split(',')
+      return Number(d[0]) >= Number(left) && Number(d[0]) <= Number(right) && Number(d[1]) >= Number(top) && Number(d[1]) <= Number(bottom)
+    })
+
+    // if(list1.length >=5) {
+      for(let i = 1; i < 5; i++) {
+        res = getC(left, top, x, y, i).filter(x => list1.includes(x))
+        dangerList.push({list: res, type: i})
+        if (res.length === 5) {
+          isFinal = true
+          setTimeout(() => {
+            alert((type ? "黑" : "白") + "棋胜!")
+            reset(ctx)
+          }, 10)
+          break
+        }
+      }
+      return dangerList
+    // }
+  }
+
+  /**
+   * 生成范围棋子
+   * @param c_x 左边界
+   * @param c_y 上边界
+   * @param r_x 原x
+   * @param r_y 原y
+   * @param type 1：横2：纵3：左下4：左上 ——,|,\,/
+   */
+  function getC(c_x, c_y, r_x, r_y, type) {
+    let demoList = []
+    let dx = Number(c_x)
+    let dy = Number(c_y)
+    for(let x = 0; x < 5; x++) {
+      switch(type) {
+        case 1:
+          dx += x !== 0 ? lineHeight : 0
+          demoList.push(dx + ',' + r_y)
+          break;
+        case 2:
+          dy += x !== 0 ? lineHeight : 0
+          demoList.push(r_x + ',' + dy)
+          break;
+        case 3:
+          dx += x !== 0 ? lineHeight : 0
+          dy += x !== 0 ? lineHeight : 0
+          demoList.push(dx + ',' + dy)
+          break;
+        case 4:
+          dx += x !== 0 ? lineHeight : 0
+          dy = (x !== 4 ? lineHeight * (4 - x) : 0) + c_y
+          demoList.push(dx + ',' + dy)
+          break;
+      }      
+    }
+    return demoList
+  }
+
+  // 电脑落子
+  function computerDown(ctx) {
+    var res = {cFinal: false}
+    let fListH = blackLong.filter(x => x.list.length === 4) // 黑4
+    let fListW = whiteLong.filter(x => x.list.length === 4) // 白4
+    let TListH = blackLong.filter(x => x.list.length === 3) // 黑3
+    let TListW = whiteLong.filter(x => x.list.length === 3) // 白3
+    let TListWT = whiteLong.filter(x => x.list.length === 2) // 白2
+    let TListHT = whiteLong.filter(x => x.list.length === 2) // 黑2
+
+    // 白4
+    if (!res.cFinal && whiteLong.length) {
+      res = submitChess(fListW, 2, ctx) || res // 接
+      if (!res.cFinal) res = submitChess(fListW, 1, ctx) || res // 长 5
+    }
+
+    // 黑4
+    res = submitChess(fListH, 2, ctx) || res // 断
+    if (!res.cFinal) res = submitChess(fListH, 1, ctx) || res // 堵 4
+
+    // 黑3
+    if (!res.cFinal) res = submitChess(TListH, 2, ctx) || res // 断 5
+    if (!res.cFinal) res = submitChess(TListH, 1, ctx) || res // 堵 3
+
+    // 白3
+    if (!res.cFinal && whiteLong.length) {
+      res = submitChess(TListW, 2, ctx) || res // 接 5
+      if (!res.cFinal) res = submitChess(TListW, 1, ctx) || res // 长 4
+    }
+
+    // 白2
+    if (!res.cFinal && whiteLong.length) {
+      res = submitChess(TListWT, 2, ctx) || res // 接 4
+      if (!res.cFinal) res = submitChess(TListWT, 1, ctx) || res // 长 3
+    }
+
+    if (!res.cFinal) {
+      res = randomDown(ctx)
+    }
+    
+    if(res.cFinal) {
+      chessPieceList.push(res.obj)
+      inventory(res.obj, chessPiece, ctx) // 盘点
+      chessFinal(res.obj)
+    }
+  }
+
+  // step: 1-长/堵; 2-接/断
+  function submitChess(list, step, ctx) {
+    for(let i = 0; i < list.length; i++) {
+      let c = getComputerC(list[i], step)
+      let res = fOrT(list[i], c, step, ctx)
+      if (res) {
+        return res
+      }
+    }
+  }
+
+  //  获取电脑落子——长2/3/4
+  function fOrT(item, c, step, ctx) {
+    let nameList = chessPieceList.map(x => x.name)
+    if (item.list.length === 4 || step === 2) {
+      for(let x = 0; x < c.length; x++) {
+        if (!nameList.includes(c[x].x + ',' + c[x].y)) {
+          dot(ctx, chessPiece ? "#000" : "#fff", c[x].x, c[x].y, 8)
+          let obj = {'name': c[x].x + ',' + c[x].y, type: chessPiece}
+          return {cFinal: true, obj: obj}
+        }     
+      }  
+    } else {
+      if (!nameList.includes(c[0].x + ',' + c[0].y) && !nameList.includes(c[1].x + ',' + c[1].y)) {
+        dot(ctx, chessPiece ? "#000" : "#fff", c[0].x, c[0].y, 8)
+        let obj = {'name': c[0].x + ',' + c[0].y, type: chessPiece}
+        return {cFinal: true, obj: obj}
+      }
+    }
+  }
+
+  // 获取电脑落子——随机
+  function randomDown(ctx) {
+    let hisList = []
+    let nameList = chessPieceList.map(x => x.name)
+    for(let i = 0; i < 25; i++) {
+      let x = (Math.floor(Math.random() * 6) + 7) * lineHeight + padding
+      let y = (Math.floor(Math.random() * 6) + 7) * lineHeight + padding
+      hisList.push(x + ',' + y)
+      if (!nameList.includes(x + ',' + y)) {
+        dot(ctx, chessPiece ? "#000" : "#fff", x, y, 8)
+        let obj = {'name': x + ',' + y, type: chessPiece}
+        return {cFinal: true, obj}
+      }
+    }
+  }
+
+  // 获取电脑落子——
+  function getComputerC(item, step) {
+    console.log("item", item)
+    let res = []
+    let xlist = item.list.map(x => x.split(',')[0])
+    let ylist = item.list.map(x => x.split(',')[1])
+    let xMin = Math.min(...xlist)
+    let yMin = Math.min(...ylist)
+    let xMax = Math.max(...xlist)
+    let yMax = Math.max(...ylist)
+    // console.log("xMin", xMin, "yMin", yMin, "xMax", xMax, "yMax", yMax)
+    let rangDot = getRangeDot(xMin, xMax, yMin, yMax, lineHeight)
+    // console.log("xMinChress", xMinChress, "xMaxChress", xMaxChress, "yMinChress", yMinChress, "yMaxChress", yMaxChress)
+    // type 1：横2：纵3：左下4：左上
+    switch(item.type) {
+      case 1:
+        if (step === 1) {
+          res.push({x: rangDot.xMinChress, y: yMin})
+          res.push({x: rangDot.xMaxChress, y: yMax})
+        } else {
+          let obj = intercept(xlist, ylist, item.type)
+          if (obj.x) res.push({x: obj.x, y: yMin})
+        }
+        break;
+      case 2:
+        if (step === 1) {
+          res.push({x: xMin, y: rangDot.yMinChress})
+          res.push({x: xMax, y: rangDot.yMaxChress})
+        } else {
+          let obj = intercept(xlist, ylist, item.type)
+          if (obj.y) res.push({x: xMin, y: obj.y})
+        }
+        break;
+      case 3:
+        if (step === 1) {
+          res.push({x: rangDot.xMinChress, y: rangDot.yMinChress})
+          res.push({x: rangDot.xMaxChress, y: rangDot.yMaxChress})
+        } else {
+          let obj = intercept(xlist, ylist, item.type)
+          if (obj.x && obj.y) res.push({x: obj.x, y: obj.y})
+        }
+        break;
+      case 4:
+        if (step === 1) {
+          res.push({x: rangDot.xMinChress, y: rangDot.yMaxChress})
+          res.push({x: rangDot.xMaxChress, y: rangDot.yMinChress})
+        } else {
+          let obj = intercept(xlist, ylist, item.type)
+          if (obj.x && obj.y) res.push({x: obj.x, y: obj.y})
+        }
+        break;
+    }
+    // console.log("res", res)
+    return res
+  }
+
+  // 寻找连子断点
+  function intercept(xlist, ylist, type) {
+    let xMin = Math.min(...xlist)
+    let yMin = Math.min(...ylist)
+    let xMax = Math.max(...xlist)
+    let yMax = Math.max(...ylist)
+    let c_x = null
+    let c_y = null
+    // type 1：横2：纵3：左下4：左上
+    switch(type) {
+      case 1:
+        c_x = xMin
+        for(let c = 0; c < ((xMax - xMin) / lineHeight); c++) {
+          c_x += lineHeight
+          if(xlist.indexOf(c_x + '') === -1) break
+        }
+        break;
+      case 2:
+        c_y = yMin
+        for(let c = 0; c < ((yMax - yMin) / lineHeight); c++) {
+          c_y += lineHeight
+          if(ylist.indexOf(c_y + '') === -1) break
+        }
+        break;
+      case 3:
+        c_x = xMin
+        c_y = yMin
+        for(let c = 0; c < ((xMax - xMin) / lineHeight); c++) {
+          c_x += lineHeight
+          c_y += lineHeight
+          if(xlist.indexOf(c_x + '') === -1 && ylist.indexOf(c_y + '') === -1) break
+        }
+        break;
+      case 4:
+        c_x = xMin
+        c_y = yMax
+        for(let c = 0; c < ((xMax - xMin) / lineHeight); c++) {
+          c_x += lineHeight
+          c_y -= lineHeight
+          if(xlist.indexOf(c_x + '') === -1 && ylist.indexOf(c_y + '') === -1) break
+        }
+        break;
+    }
+    return {
+      x: c_x === xMin ? null : c_x,
+      y: c_y === yMin ? null : c_y
+    }
+  }
+
+  // 范围
+  function getRangeDot(xMin, xMax, yMin, yMax, newLineHeight) {
+    let xMinChress = (xMin - newLineHeight < padding) ? xMin : xMin - newLineHeight
+    let xMaxChress = (xMax + newLineHeight > maxBorder) ? xMax : xMax + newLineHeight
+    let yMinChress = (yMin - newLineHeight < padding) ? yMin : yMin - newLineHeight
+    let yMaxChress = (yMax + newLineHeight > maxBorder) ? yMax : yMax + newLineHeight
+    return { xMinChress, xMaxChress, yMinChress, yMaxChress}
+  }
+
+  // 切换模式
+  function changeGameType(type) {
+    gameType = type
+    document.getElementById("type1").className = ""
+    document.getElementById("type2").className = ""
+    document.getElementById("type" + type).className = "active"
+    reset(ctxA)
+  }
+
+  // 重置
+  function reset(ctx = ctxA) {
+    ctx.clearRect(0,0,496,496);
+    isFinal = false
+    chessPiece = true
+    chessPieceList = []
+    blackLong = []
+    whiteLong = []
+    document.getElementById("tip").innerHTML = "当前落子：" + (chessPiece ? "黑" : "白") + (gameType === 2 ? (chessPiece ? "（你）" : "（电脑）") : '')
+    draw(ctx)
+  }
+
+</script>
+
+</html>
