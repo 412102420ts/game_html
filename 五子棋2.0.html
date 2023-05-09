@@ -34,7 +34,7 @@
 <body>
   <div class="main">
     <!-- 画布 -->
-    <canvas id="canvas" width="496" height="496"></canvas>
+    <canvas id="canvas" width="490" height="490"></canvas>
 
     <div class="box">
       <div id="tip" class="control-item"></div>
@@ -55,8 +55,9 @@
 <script>
   // 画布长宽相同，宽减去两侧边距与间隔成倍数，否则有小数精度问题
   var padding = 20; // 棋盘边距
-  var lineHeight = 24  // 棋盘间隔
-  var maxBorder = 496 - padding
+  var lineHeight = 25  // 棋盘间隔
+  var wh = 490 // 宽高
+  var maxBorder = wh - padding
 
   var gameType = 1 // 1:单人 2：人机
   var chessPiece = true // true:黑 false:白
@@ -114,7 +115,7 @@
   // 画图
   function draw(ctx) {
     ctx.fillStyle="#e7e8eb";
-    ctx.fillRect(0,0,496,496);
+    ctx.fillRect(0,0,wh,wh);
     ctx.lineJoin="round";
     ctx.lineWidth="1"
     ctx.strokeStyle="#000"
@@ -126,12 +127,12 @@
         if (i === 0) {
           ctx.beginPath();
           ctx.moveTo(padding, loc + padding);
-          ctx.lineTo((496 - padding), loc + padding)
+          ctx.lineTo((wh - padding), loc + padding)
           ctx.stroke();
         } else {
           ctx.beginPath();
           ctx.moveTo(loc + padding, padding);
-          ctx.lineTo(loc + padding, (496 - padding))
+          ctx.lineTo(loc + padding, (wh - padding))
           ctx.stroke();
         }
       }
@@ -140,7 +141,7 @@
     // 星位
     var left = padding + 4 * lineHeight;
     var middle = padding + ((18 - 8) / 2 + 4) * lineHeight;
-    var right = 496 - padding - 4 * lineHeight;
+    var right = wh - padding - 4 * lineHeight;
     // 左
     dot(ctx, "#000", (left), (left), 4)
     dot(ctx, "#000", (left), (middle), 4)
@@ -504,7 +505,7 @@
 
   // 重置
   function reset(ctx = ctxA) {
-    ctx.clearRect(0,0,496,496);
+    ctx.clearRect(0,0,wh,wh);
     isFinal = false
     chessPiece = true
     chessPieceList = []
