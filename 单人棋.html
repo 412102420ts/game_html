@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Solitaire</title>
+  <style>
+    #box {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      align-items: center;
+      width: 530px;
+      height: 530px;
+      border-radius: 50%;
+      padding: 50px;
+    }
+    .left {
+      position: fixed;
+      left: -50%;
+      top: 50%;
+      transform: translate(0, -50%);
+      width: 250px;
+    }
+    .left button {
+      width: 50px;
+    }
+    .tip {
+      font-size: 16px;
+      line-height: 20px;
+      margin-top: 10px;
+    }
+    .back {
+      position: absolute;
+      z-index: -1;
+      width: 530px;
+      height: 530px;
+      left: 0;
+      top: 0;
+      border-radius: 50%;
+      border: 1px solid #333;
+      padding: 50px;
+      transform: rotateX(15deg);
+      background-color: #a87942;
+      box-shadow: 0 0 12px 2px #333;
+    }
+    .item {
+      position: relative;
+    }
+    .loc {
+      width: 70px;
+      height: 70px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-image: radial-gradient(closest-side at 47% 55%, #ab7e4b, #a87942, #553d21 145%);
+      position: relative;
+      border-radius: 50%;
+    }
+    .dot {
+      position: absolute;
+      border-radius: 50%;
+      background-color: #ececec;
+      background-image: radial-gradient(closest-side at 63% 37%, #fff, #979797);
+      width: 70px;
+      height: 70px;
+      z-index: 5;
+      top: -3%;
+      left: 0;
+      transition: top 0.3s ease;
+      cursor: pointer;
+    }
+    .dot:hover {
+      top: -35%;
+    }
+    .displayNone {
+      display: none;
+    }
+    .active {
+      top: -35%;
+      box-shadow: 0px 25px 10px -15px #333;
+    }
+    .chessOut {
+      z-index: 9;
+      animation: slideOut 0.5s ease-in-out forwards; /* 动画名称, 持续时间, 缓动函数, 填充模式 */
+    }
+    #result {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      align-items: center;
+      padding: 10px 20px;
+      border-radius: 5px;
+      box-shadow: 3px 6px 10px 3px;
+      line-height: 20px;
+      width: 300px;
+      height: 200px;
+      z-index: 7;
+      background-color: #fff;
+    }
+    .appear {
+      animation: slide-in 0.3s forwards;
+    }
+    .dixHidden {
+      visibility: hidden;
+    }
+    @keyframes fadeOut {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
+    @keyframes slideIn {
+      from {
+        transform: translateX(-100%);
+      }
+      to {
+        transform: translateX(0);
+      }
+    }
+    @keyframes slideOut {
+      from {
+        left: 0;
+      }
+      to {
+        left: 500%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="box">
+    <div class="back"></div>
+    <div class="left">
+      <button onclick="onReact()">重置</button>
+      <div class="tip">
+        <p>基本规则‌：玩家每次移动一个棋子，跳过另一个棋子并占据其位置，同时吃掉被跳过的棋子。棋子只能沿直线方向（横或纵）移动，不能斜跳。每次移动后，被跳过的棋子会被移出棋盘‌。</p>
+        <p>目标‌：游戏的目的是使棋盘上剩下的棋子数量尽可能少，最终剩下一枚棋子在棋盘中心为最佳结果‌</p>
+      </div>
+    </div>
+    <div id="result" class="dixHidden">
+      <h2 style="color: red;" id="resName"></h2>
+      <h3>还来不</h3>
+      <button style="width: 40%;" onclick="onReact()">来</button>
+    </div>
+  </div>
+
+  <script lang="js">
+    const disDiv = [1, 2, 6, 7, 8, 9, 13, 14, 36, 37, 41, 42, 43, 44, 48, 49] // 四角
+    const disChess = 25 // 中心点
+    let chessList = [] // 棋子列表
+    let itemList = [] // 全部棋位
+    let selectChess = null // 选中棋子
+
+    window.onload = () => {
+      init()
+    }
+
+    // 初始化
+    function init() {
+      chessList = []
+      selectChess = null
+      let box = document.getElementById("box")
+      for(let i = 0; i < 49; i++) {
+        let item = document.createElement("div")
+        item.classList.add('item')
+        // 棋位
+        let hole = document.createElement("div")
+        hole.classList.add('loc')
+        hole.setAttribute("data-id", "h-"+(i+1))
+        if(disDiv.indexOf(i+1) >= 0) {
+          hole.style.visibility = 'hidden'
+        } else {
+          hole.addEventListener('click', () => {
+            clickHole(i+1, hole)
+          })
+        }
+        // 棋子
+        let chess = document.createElement("div")
+        chess.classList.add('dot')
+        if((i+1) === disChess) chess.classList.add('displayNone')
+        chess.setAttribute("data-id", "c-"+(i+1))
+        if(disDiv.indexOf(i+1) >= 0) {
+          chess.classList.add("displayNone")
+        } else {
+          chess.addEventListener('click', () => {
+            clickChess(i+1, chess)
+          })
+        }
+        chessList.push(chess)
+        item.appendChild(chess)
+        item.appendChild(hole)
+        itemList.push(item)
+        box.appendChild(item)
+      }  
+    }
+
+    // 点击棋位
+    function clickHole(i, e) {
+      if(!selectChess) return
+      let id1 = e.getAttribute("data-id")
+      let id2 = selectChess.getAttribute("data-id")
+      let loc1 = Number(id1.split("-")[1])
+      let loc2 = Number(id2.split("-")[1])
+      let poor = loc1 - loc2
+      let newId = ""
+      let removeId = ""
+      if (Math.abs(poor) !== 14 && Math.abs(poor) !== 2) return
+      if(poor === 2) {
+        newId = ("c-" + (loc2 + poor))
+        removeId = ("c-" + (loc2 + (poor / 2)))
+      } else {
+        newId = ("c-" + (loc2 + poor))
+        removeId = ("c-" + (loc2 + (poor / 2)))
+      }
+      let removeChess = chessList.find(x => {
+        return x.getAttribute("data-id") === removeId
+      })
+      if([...removeChess.classList].indexOf("displayNone") >= 0) return // 中间无棋子不可动
+
+      // 移动棋子
+      chessList.find(x => {
+        return x.getAttribute("data-id") === selectChess.getAttribute("data-id")
+      }).classList.add("displayNone")
+      chessList.find(x => {
+        return x.getAttribute("data-id") === newId
+      }).classList.remove("displayNone")
+
+      // 被吃棋子
+      let t = removeChess
+      t.classList.add("chessOut")
+      t.onanimationend = () => {
+        t.classList.remove("chessOut")
+        t.classList.add("displayNone")
+        isEnd() // 结算判断
+      }
+    }
+
+    // 点击棋子
+    function clickChess(i, e) {
+      let node = chessList.find(x => {
+        return [...x.classList].indexOf('active') >= 0
+      })
+      let chess = chessList.find(x => {
+        return x.getAttribute("data-id") === e.getAttribute("data-id")
+      })
+      let id2 = chess.getAttribute("data-id")
+      if(node) {
+        let id1 = node.getAttribute("data-id")
+        if(id1 === id2) {
+          selectChess = null
+          chess.classList.remove("active")
+        } else {
+          selectChess = e
+          node.classList.remove("active")
+          chess.classList.add("active")
+        }
+      } else {
+        selectChess = e
+        chess.classList.add("active")
+      }
+    }
+
+    const resName = ["天才", "大师", "尖子", "聪明", "很好", "还行", "一般", "难评"]
+    // 结束判断
+    function isEnd() {
+      let res = false
+      let chess = chessList.filter(x => [...x.classList].indexOf("displayNone") < 0).map(x => Number(x.getAttribute("data-id").split('-')[1]))
+      for(let i = 0; i < chess.length; i++) {
+        let item = chess[i]
+        let bottom = item - 7
+        let bottomM = item - 14
+        let top = item + 7
+        let topM = item + 14
+        let left = (item-1)%7 === 0 ? 0 : item - 1
+        let leftM = item - 2
+        let right = item%7 === 0 ? 0 : item + 1
+        let rightM = item + 2
+        if((isRange(bottom) && chess.indexOf(bottom) >= 0 && isRange(bottomM) && isVacancy(bottomM, chess)) ||
+          (isRange(top) && chess.indexOf(top) >= 0 && isRange(topM) && isVacancy(topM, chess)) ||
+          (isRange(left) && chess.indexOf(left) >= 0 && isRange(leftM) && isVacancy(leftM, chess)) ||
+          (isRange(right) && chess.indexOf(right) >= 0 && isRange(rightM) && isVacancy(rightM, chess))) {
+          res = true
+          break
+        }
+      }
+      let num = chess.length
+      // 游戏结束
+      if(!res) {
+        let resDom = document.getElementById("result")
+        let resNameDom = document.getElementById("resName")
+        let txt = ""
+        if(num > 1 && num < 7) {
+          txt = resName[num]
+        } else if(num >= 7) {
+          txt = resName[7]
+        } else {
+          if(chess[0] === 25) {
+            txt = resName[0]
+          } else {
+            txt = resName[1]
+          }
+        }
+        resNameDom.innerText = txt + "！"
+        resDom.classList.remove("dixHidden")
+        resDom.classList.add("appear")
+        resDom.onanimationend = () => {
+          resDom.classList.remove("appear")
+        }
+      }
+    }
+
+    // 重置
+    function onReact() {
+      let resDom = document.getElementById("result")
+      resDom.classList.add("dixHidden")
+      let box = document.getElementById("box")
+      itemList.forEach(item => {
+        box.removeChild(item)
+      })
+      itemList = []
+      init()
+    }
+
+    // 是否在棋盘范围内
+    function isRange(num) {
+      return num > 0 && num < 50
+    }
+    // 是否为有效空位
+    function isVacancy(num, arr) {
+      return [...arr, ...disDiv].indexOf(num) < 0
+    }
+
+  </script>
+</body>
+</html>
