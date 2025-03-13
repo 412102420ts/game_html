@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NewChineseChess</title>
+  <style>
+    .chessboard {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 500px;
+      height: 550px;
+      border: 1px solid #333;
+    }
+    .btns {
+      left: 50.2%;
+      top: 50.5%;
+      z-index: 10;
+      border: none;
+    }
+    .btns .btn-item {
+      width: 40px;
+      height: 40px;
+      position: fixed;
+      cursor: pointer;
+      border-radius: 50%;
+      background-color: transparent;
+    }
+    .info {
+      position: fixed;
+      left: 50%;
+      top: 4%;
+      transform: translate(-50%, 0);
+      text-align: center;
+    }
+    .info .info-item:not(:last-child) {
+      margin-right: 10px;
+    }
+    .tips {
+      position: fixed;
+      left: 13%;
+      top: 10%;
+      width: 300px;
+    }
+    .result {
+      position: fixed;
+      left: 67%;
+      top: 9%;
+      z-index: 20;
+      font-size: 20px;
+      padding: 10px;
+      box-shadow: 0 0 10 #fff;
+    }
+  </style>
+</head>
+<body>
+  <div class="info">
+    <div>
+      <span class="info-item">距离通关剩余：<span id="bout"></span>回合</span>
+      <span class="info-item">当前得分：<span id="score"></span></span>
+      <span id="protectionTime" class="info-item"></span>
+    </div>
+    <div>
+      <span><span id="nextBout"></span>回合后出现棋子：<span id="newChess"></span></span>
+    </div>
+  </div>
+  <div class="tips">
+    <div>‌将‌：上下左右移动一步，吃掉后下次移动可发动技能（清除同行、同列所有棋子）。</div>
+    ‌<div>士‌：斜线移动一步。</div>
+    ‌<div>象‌：“田”字移动，若田字中心有棋则不能移动。</div>
+    ‌<div>马‌：“日”字移动，若被“蹩马腿”则不能移动。</div>
+    ‌<div>車‌：可直线移动，无距离限制。</div>
+    ‌<div>炮‌：移动方式与車相同，吃子时需隔一棋子。</div>
+    <div>卒‌：上下左右移动一步</div>
+  </div>
+  <canvas id="chessboard" class="chessboard"></canvas>
+  <div id="btns" class="chessboard btns"></div>
+
+  <div class="result">
+    <div id="result" style="margin-bottom: 10px;"></div>
+    <button id="againBtn" onclick="init()">再来一局</button>
+  </div>
+  
+</body>
+
+<script type="text/javascript" src="./js/chessPieces.js"></script>
+<script type="text/javascript" src="./js/chessboard.js"></script>
+<script>
+  const moveTotalTime = 150 // 移动时间
+  const moveInterval = 30 // 移动帧
+  const factions = {R: 'R', B: 'B'} // 阵营
+  const padding = 30 // 棋盘边距
+  const width = 50;
+  const height = 50;
+  const chessRadius = 20 // 棋子半径
+  const txtIn = '&'
+  const skillColor = '240,197,0' // 技能颜色
+  const btns = document.getElementById('btns');
+  const canvas = document.getElementById('chessboard');
+  const boutDom = document.getElementById('bout')
+  const resultDom = document.getElementById('result');
+  const protectionTimeDom = document.getElementById('protectionTime')
+  const scoreDom = document.getElementById('score')
+  const nextBoutDom = document.getElementById('nextBout')
+  const newChessDom = document.getElementById('newChess')
+  const againBtnDom = document.getElementById('againBtn')
+  const rect = canvas.getBoundingClientRect();
+  const ctx = canvas.getContext('2d');
+  canvas.width = width * 8 + padding * 2;
+  canvas.height = height * 9 + padding * 2;
+  const chessObj = {
+    Z: '卒',
+    S: '士',
+    X: '象',
+    M: '马',
+    P: '炮',
+    J: '車',
+    A: '将'
+  }
+  const chesssName = ['Z', 'S', 'X', 'M', 'P', 'J', 'A']
+  let chesssCale = [] // 棋子出现比例
+  let chessList = []
+  let mine = null
+  let isMove = false
+  let bout = 0 // 回合数
+  let scoreTotal = 0 // 分数
+  let intervalBout = 1 // 生成棋子间隔回合
+  let nextNewChess = [] // 下次出现棋子
+  let isA = false // 下轮出现将
+  let isRevive = false // 是否已复活
+  let hadSkill = false // 拥有技能
+
+  // 点击棋盘
+  async function onClickMine(e) {
+    if(isMove) return
+    isMove = true // 移动开始
+    let x = Number(e.target.dataset.x)
+    let y = Number(e.target.dataset.y)
+    // 移
+    let canMoveList = mine.getCanMoveDot()
+    if(canMoveList.findIndex(item => item === (x + txtIn + y)) < 0) {
+      isMove = false
+      return
+    }
+    await mine.move(x, y)
+    // // 吃
+    if(!hadSkill) {
+      let chessOut = chessList.find(item => item.getLoc() === (x + txtIn + y))
+      if(chessOut) {
+        onChessOut(mine, chessOut.id)
+      }
+    } else { // 发动技能
+      await drawSkill()
+      chessList.filter(x => x.x === mine.x || x.y === mine.y).forEach(item => {
+        onChessOut(mine, item.id)
+      })
+      hadSkill = false
+      reset()
+    }
+    isMove = false // 移动结束
+    chessThink() // 棋子移动
+  }
+
+  // 计算分数
+  function countScore(score) {
+    scoreTotal += score || 0
+    scoreDom.innerText = scoreTotal
+  }
+
+  // 计算回合数
+  function countRound() {
+    bout += 1
+    if(bout > 200) {
+      showTip()
+      return
+    }
+    boutDom.innerText = 201 - bout
+    if(bout <= 15) {
+      protectionTimeDom.innerText = `新手保护期（${!isRevive ? '可复活一次': '无复活次数'}）剩余：${(16 - bout)}回合`
+    } else {
+      protectionTimeDom.style.display = 'none'
+    }
+    intervalBout -= 1
+    nextBoutDom.innerText = intervalBout
+    if(bout > 10 && bout % 50 === 0) isA = true // 每50回合出现将
+    if(intervalBout === 0) generateChess()
+  }
+
+  // 计算下次生成棋子
+  function getNextNewChess() {
+    nextNewChess = []
+    // 随机
+    let list = []
+    let res = []
+    if(isA) {
+      res = ['A', 'S', 'S']
+      isA = false
+    } else {
+      // 根据比例随机出现棋子
+      chesssCale.forEach((item, index) => {
+        list.push(...new Array(item).fill(0).map(() => chesssName[index]))
+      })
+      new Array(3).fill(0).forEach(item => {
+        res.push(list[Math.floor(Math.random() * list.length)])
+      })
+    }
+    newChessDom.innerText = res.map(x => chessObj[x]).join('，')
+    nextBoutDom.innerText = intervalBout
+    nextNewChess = res
+  }
+
+  // 生成棋子
+  function generateChess() {
+    // 生成
+    intervalBout = 0
+    let hadDot = chessList.map(x => x.getLoc())
+    let newList = []
+    nextNewChess.forEach(item => {
+      let chess = null
+      switch(item) {
+        case 'Z':
+          chess = new Soldiers(factions.B)
+          break;
+        case 'S':
+          chess = new Knight(factions.B, nextNewChess.indexOf('A') >= 0)
+          break;
+        case 'X':
+          chess = new Elephant(factions.B)
+          break;
+        case 'M':
+          chess = new Horse(factions.B)
+          break;
+        case 'P':
+          chess = new Gun(factions.B)
+          break;
+        case 'J':
+          chess = new Car(factions.B)
+          break;
+        case 'A':
+          chess = new Marshal(factions.B)
+          break;
+      }
+      // intervalBout += chess.interval
+      chessList.push(chess)
+      newList.push({x: chess.x, y: chess.y})
+    })
+    intervalBout = Math.min(chessList.length, 8)
+    drawNewTag(newList)
+    getNextNewChess()
+    changeCale()
+  }
+
+  // 变更比例
+  function changeCale() {
+    let list = chesssCale
+    // 0,1,2,2,3,2
+    for(let i = 0; i < chesssCale.length; i++) {
+      if(i === 0 && chesssCale[i] > 1) chesssCale[i] -= 1
+      if(i === 1 && bout > 6 && chesssCale[i] < 5) chesssCale[i] += 1
+      if(i === 2 && bout > 20 && chesssCale[i] < 10) chesssCale[i] += 1
+      if(i === 3 && bout > 25 && chesssCale[i] < 10) chesssCale[i] += 1
+      if(i === 4 && bout > 40 && chesssCale[i] < 15) chesssCale[i] += 1
+      if(i === 5 && bout > 60 && chesssCale[i] < 10) chesssCale[i] += 1
+    }
+  }
+
+  // 棋子思考
+  async function chessThink() {
+    let moveDot = [] // 可攻击
+    chessList.forEach(x => {
+      moveDot.push(...x.getCanMoveDot())
+    })
+    moveDot = Array.from(new Set(moveDot))
+    let res = false
+    let attackDot = chessList.filter(x => x.getCanAttackDot().length > 0)
+    for(let i = 0; i < attackDot.length; i++) {
+      res = await attackDot[i].chessMove(2)
+      if(res) {
+        onChessOut(attackDot[i], mine.id)
+        break
+      }
+    }
+    if(res) return
+    // 无攻击则躲避
+    if(!res) {
+      let beAttacked1 = chessList.filter(x => mine.getCanAttackDot().indexOf(x.getLoc()) >= 0) // 被攻击
+      let beAttacked2 = beAttacked1.filter(x => moveDot.indexOf(x.getLoc()) < 0)
+      for(let i = 0; i < beAttacked2.length; i++) { // 优先移动无保护
+        res = await beAttacked2[i].chessMove(1)
+        if(res) break
+      }
+      if(!res) { // 移动有保护
+        for(let i = 0; i < beAttacked1.length; i++) {
+          res = await beAttacked1[i].chessMove(1)
+          if(res) break
+        }
+        // 无躲避自由移动
+        if(!res) {
+          for(let i = 0; i < chessList.length; i++) {
+            res = await chessList[i].chessMove(1)
+            if(res) break
+          }
+        }
+      }
+    }
+    countRound()
+    drawMoveDot()
+  }
+
+  // 吃子
+  function onChessOut(chess, outId) {
+    if(outId !== mine.id) {
+      let index = chessList.findIndex(x => x.id === outId)
+      countScore(chessList[index].score)
+      if(chessList[index].text === '将') hadSkill = true
+      chessList.splice(index, 1)
+    } else {
+      if(bout <= 15 && !isRevive) {
+        setTimeout(() => {
+          isRevive = true
+          showTip(3)
+          let index = chessList.findIndex(x => x.id === chess.id)
+          countScore(chessList[index].score)
+          chessList.splice(index, 1)
+          mine.draw()
+          countRound()
+          drawMoveDot()
+        }, 1000)
+      } else {
+        showTip(2)
+        isMove = true
+      }
+    }
+  }
+
+  // 重置
+  function reset(id) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath()
+    ctx.strokeStyle = ``
+    ctx.shadowColor = ``;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.shadowBlur = 0;
+    drawChessboard()
+    chessList.forEach(item => item.draw(0))
+    if(mine && mine.id !== id) mine.draw(0)
+  }
+
+  // 设置点位按钮
+  function setBtns() {
+    for(let x = 0; x < 9; x++) {
+      for(let y = 0; y < 10; y++) {
+        let dom = document.createElement('div')
+        dom.classList.add('btn-item')
+        dom.style.left = (padding + x * (width * 1.085) - chessRadius) + 'px'
+        dom.style.top = (padding + y * (height * 1.08) - chessRadius) + 'px'
+        dom.dataset.x = x
+        dom.dataset.y = y
+        dom.addEventListener('click', onClickMine)
+        btns.appendChild(dom)
+      }
+    }
+  }
+
+  // 初始化
+  function init() {
+    resultDom.style.display = 'none'
+    againBtnDom.style.display = 'none'
+    scoreTotal = 0
+    bout = 0
+    chesssCale = [10, 0, 0, 0, 0, 0]
+    chessList = []
+    isMove = false
+    mine = null
+    isA = false
+    hadSkill = false
+    isRevive = false
+    intervalBout = 1
+    reset()
+    mine = new Car(factions.R)
+    getNextNewChess()
+    countRound()
+    countScore()
+    drawMoveDot()
+    setBtns()
+  }
+
+  init()
+
+</script>
+</html>
